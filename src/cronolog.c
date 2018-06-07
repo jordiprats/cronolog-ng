@@ -117,7 +117,7 @@ int	new_log_file(const char *, const char *, mode_t, const char *,
   "   -l NAME,   --link=NAME     same as -S/--symlink\n" \
   "   -P NAME,   --prev-symlink=NAME  maintain a symbolic link from NAME to previous log\n" \
   "   -R NAME,   --remote-syslog=NAME syslog server\n" \
-  "   -F NAME,   --on-rotate=FILE     file to execute on log rotation\n" \
+  "   -F NAME,   --on-rotation=FILE     file to execute on log rotation\n" \
   "   -h,        --help          print this help, then exit\n" \
   "   -p PERIOD, --period=PERIOD set the rotation period explicitly\n" \
   "   -d DELAY,  --delay=DELAY   set the rotation period delay\n" \
@@ -138,21 +138,21 @@ char          *short_options = "ad:eop:s:z:H:P:F:R:S:l:hVx:";
 #ifndef _WIN32
 struct option long_options[] =
 {
-    { "american",	no_argument,		NULL, 'a' },
-    { "european",	no_argument,		NULL, 'e' },
-    { "start-time", 	required_argument,	NULL, 's' },
-    { "time-zone",  	required_argument,	NULL, 'z' },
-    { "hardlink",  	required_argument, 	NULL, 'H' },
-    { "symlink",   	required_argument, 	NULL, 'S' },
-    { "prev-symlink",  	required_argument, 	NULL, 'P' },
-    { "remote-syslog",  required_argument,      NULL, 'R' },
-    { "on-rotate",      required_argument,      NULL, 'F' },
-    { "link",      	required_argument, 	NULL, 'l' },
-    { "period",		required_argument,	NULL, 'p' },
-    { "delay",		required_argument,	NULL, 'd' },
-    { "once-only", 	no_argument,       	NULL, 'o' },
-    { "help",      	no_argument,       	NULL, 'h' },
-    { "version",   	no_argument,       	NULL, 'V' }
+    { "american",	     no_argument,		    NULL, 'a' },
+    { "european",	     no_argument,		    NULL, 'e' },
+    { "start-time", 	 required_argument,	NULL, 's' },
+    { "time-zone",  	 required_argument,	NULL, 'z' },
+    { "hardlink",  	   required_argument, NULL, 'H' },
+    { "symlink",   	   required_argument, NULL, 'S' },
+    { "prev-symlink",  required_argument, NULL, 'P' },
+    { "remote-syslog", required_argument, NULL, 'R' },
+    { "on-rotation",   required_argument, NULL, 'F' },
+    { "link",      	   required_argument,	NULL, 'l' },
+    { "period",		     required_argument,	NULL, 'p' },
+    { "delay",		     required_argument,	NULL, 'd' },
+    { "once-only", 	   no_argument,       NULL, 'o' },
+    { "help",      	   no_argument,       NULL, 'h' },
+    { "version",   	   no_argument,       NULL, 'V' }
 };
 #endif
 
