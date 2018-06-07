@@ -6,7 +6,7 @@
  * are met:
  *
  * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer. 
+ *    notice, this list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in
@@ -84,12 +84,21 @@
 
 #include "cronoutils.h"
 #include "getopt.h"
-
+#include <stdio.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
+#include <netinet/in.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 /* Forward function declaration */
 
 int	new_log_file(const char *, const char *, mode_t, const char *,
-		     PERIODICITY, int, int, char *, size_t, time_t, time_t *);
+       PERIODICITY, int, int, char *, size_t, time_t, time_t *);
 
 
 /* Definition of version and usage messages */
@@ -102,27 +111,29 @@ int	new_log_file(const char *, const char *, mode_t, const char *,
 
 
 #define USAGE_MSG 	"usage: %s [OPTIONS] logfile-spec\n" \
-			"\n" \
-			"   -H NAME,   --hardlink=NAME maintain a hard link from NAME to current log\n" \
-			"   -S NAME,   --symlink=NAME  maintain a symbolic link from NAME to current log\n" \
-			"   -P NAME,   --prev-symlink=NAME  maintain a symbolic link from NAME to previous log\n" \
-			"   -l NAME,   --link=NAME     same as -S/--symlink\n" \
-			"   -h,        --help          print this help, then exit\n" \
-			"   -p PERIOD, --period=PERIOD set the rotation period explicitly\n" \
-			"   -d DELAY,  --delay=DELAY   set the rotation period delay\n" \
-			"   -o,        --once-only     create single output log from template (not rotated)\n" \
-			"   -x FILE,   --debug=FILE    write debug messages to FILE\n" \
-			"                              ( or to standard error if FILE is \"-\")\n" \
-			"   -a,        --american         American date formats\n" \
-			"   -e,        --european      European date formats (default)\n" \
-			"   -s TIME,   --start-time=TIME   starting time\n" \
-			"   -z TZ,     --time-zone=TZ  use TZ for timezone\n" \
-			"   -V,        --version       print version number, then exit\n"
+  "\n" \
+  "   -H NAME,   --hardlink=NAME maintain a hard link from NAME to current log\n" \
+  "   -S NAME,   --symlink=NAME  maintain a symbolic link from NAME to current log\n" \
+  "   -l NAME,   --link=NAME     same as -S/--symlink\n" \
+  "   -P NAME,   --prev-symlink=NAME  maintain a symbolic link from NAME to previous log\n" \
+  "   -R NAME,   --remote-syslog=NAME syslog server\n" \
+  "   -F NAME,   --on-rotate=FILE     file to execute on log rotation\n" \
+  "   -h,        --help          print this help, then exit\n" \
+  "   -p PERIOD, --period=PERIOD set the rotation period explicitly\n" \
+  "   -d DELAY,  --delay=DELAY   set the rotation period delay\n" \
+  "   -o,        --once-only     create single output log from template (not rotated)\n" \
+  "   -x FILE,   --debug=FILE    write debug messages to FILE\n" \
+  "                              ( or to standard error if FILE is \"-\")\n" \
+  "   -a,        --american         American date formats\n" \
+  "   -e,        --european      European date formats (default)\n" \
+  "   -s TIME,   --start-time=TIME   starting time\n" \
+  "   -z TZ,     --time-zone=TZ  use TZ for timezone\n" \
+  "   -V,        --version       print version number, then exit\n"
 
 
 /* Definition of the short and long program options */
 
-char          *short_options = "ad:eop:s:z:H:P:S:l:hVx:";
+char          *short_options = "ad:eop:s:z:H:P:F:R:S:l:hVx:";
 
 #ifndef _WIN32
 struct option long_options[] =
@@ -134,6 +145,8 @@ struct option long_options[] =
     { "hardlink",  	required_argument, 	NULL, 'H' },
     { "symlink",   	required_argument, 	NULL, 'S' },
     { "prev-symlink",  	required_argument, 	NULL, 'P' },
+    { "remote-syslog",  required_argument,      NULL, 'R' },
+    { "on-rotate",      required_argument,      NULL, 'F' },
     { "link",      	required_argument, 	NULL, 'l' },
     { "period",		required_argument,	NULL, 'p' },
     { "delay",		required_argument,	NULL, 'd' },
@@ -156,6 +169,10 @@ main(int argc, char **argv)
     char 	read_buf[BUFSIZE];
     char 	tzbuf[BUFSIZE];
     char	filename[MAX_PATH];
+    char	onrotateexec[MAX_PATH];
+    char	onrotatefile[MAX_PATH];
+    char	*onrotatept = "/proc/self/fd/%d";
+    char	onrotateprocfile[MAX_PATH];
     char	*start_time = NULL;
     char	*template;
     char	*linkname = NULL;
@@ -167,140 +184,163 @@ main(int argc, char **argv)
     time_t	time_offset = 0;
     time_t	next_period = 0;
     int 	log_fd = -1;
+    int        sock=-1;
+    struct sockaddr_in syslogsrv;
+    struct stat fstat_onrotate;
+
+    onrotateexec[0]=0;
 
 #ifndef _WIN32
     while ((ch = getopt_long(argc, argv, short_options, long_options, NULL)) != EOF)
 #else
     while ((ch = getopt(argc, argv, short_options)) != EOF)
-#endif        
+#endif
     {
-	switch (ch)
-	{
-	case 'a':
-	    use_american_date_formats = 1;
-	    break;
-	    
-	case 'e':
-	    use_american_date_formats = 0;
-	    break;
-	    
-	case 's':
-	    start_time = optarg;
-	    break;
+  switch (ch)
+  {
+  case 'a':
+      use_american_date_formats = 1;
+      break;
 
-	case 'z':
-	    sprintf(tzbuf, "TZ=%s", optarg);
-	    putenv(tzbuf);
-	    break;
+  case 'e':
+      use_american_date_formats = 0;
+      break;
 
-	case 'H':
-	    linkname = optarg;
-	    linktype = S_IFREG;
-	    break;
+  case 's':
+      start_time = optarg;
+      break;
 
-	case 'l':
-	case 'S':
-	    linkname = optarg;
+  case 'z':
+      sprintf(tzbuf, "TZ=%s", optarg);
+      putenv(tzbuf);
+      break;
+
+  case 'H':
+      linkname = optarg;
+      linktype = S_IFREG;
+      break;
+
+  case 'l':
+  case 'S':
+      linkname = optarg;
 #ifndef _WIN32
-	    linktype = S_IFLNK;
-#endif        
-	    break;
-	    
-	case 'P':
-	    if (linkname == NULL)
-	    {
-		fprintf(stderr, "A current log symlink is needed to mantain a symlink to the previous log\n", argv[0]);
-		exit(1);
-	    }
-	    prevlinkname = optarg;
-	    break;
-	    
+      linktype = S_IFLNK;
+#endif
+      break;
 
-	case 'd':
-	    period_delay_units = parse_timespec(optarg, &period_delay);
-	    break;
+  case 'P':
+      if (linkname == NULL)
+      {
+  fprintf(stderr, "A current log symlink is needed to mantain a symlink to the previous log\n", argv[0]);
+  exit(1);
+      }
+      prevlinkname = optarg;
+      break;
 
-	case 'p':
-	    periodicity = parse_timespec(optarg, &period_multiple);
-	    if (   (periodicity == INVALID_PERIOD)
-		|| (periodicity == PER_SECOND) && (60 % period_multiple)
-		|| (periodicity == PER_MINUTE) && (60 % period_multiple)
-		|| (periodicity == HOURLY)     && (24 % period_multiple)
-		|| (periodicity == DAILY)      && (period_multiple > 365)
-		|| (periodicity == WEEKLY)     && (period_multiple > 52)
-		|| (periodicity == MONTHLY)    && (12 % period_multiple)) {
-		fprintf(stderr, "%s: invalid explicit period specification (%s)\n", argv[0], start_time);
-		exit(1);
-	    }		
-	    break;
-	    
-	case 'o':
-	    periodicity = ONCE_ONLY;
-	    break;
-	    
-	case 'x':
-	    if (strcmp(optarg, "-") == 0)
-	    {
-		debug_file = stderr;
-	    }
-	    else
-	    {
-		debug_file = fopen(optarg, "a+");
-	    }
-	    break;
-	    
-	case 'V':
-	    fprintf(stderr, VERSION_MSG);
-	    exit(0);
-	    
-	case 'h':
-	case '?':
-	    fprintf(stderr, USAGE_MSG, argv[0]);
-	    exit(1);
-	}
+       case 'F':
+      strncpy(onrotateexec,optarg,MAX_PATH);
+
+      break;
+
+       case 'R':
+            sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            if(sock< 0)
+            {
+            	fprintf(stderr,"Failed to create socket\n");
+            	exit(1);
+            }
+
+            memset(&syslogsrv,0,sizeof(syslogsrv));
+      syslogsrv.sin_family = AF_INET;
+      syslogsrv.sin_addr.s_addr = inet_addr(optarg);
+      syslogsrv.sin_port = htons(514);
+      break;
+
+  case 'd':
+      period_delay_units = parse_timespec(optarg, &period_delay);
+      break;
+
+  case 'p':
+      periodicity = parse_timespec(optarg, &period_multiple);
+      if (   (periodicity == INVALID_PERIOD)
+  || (periodicity == PER_SECOND) && (60 % period_multiple)
+  || (periodicity == PER_MINUTE) && (60 % period_multiple)
+  || (periodicity == HOURLY)     && (24 % period_multiple)
+  || (periodicity == DAILY)      && (period_multiple > 365)
+  || (periodicity == WEEKLY)     && (period_multiple > 52)
+  || (periodicity == MONTHLY)    && (12 % period_multiple)) {
+  fprintf(stderr, "%s: invalid explicit period specification (%s)\n", argv[0], start_time);
+  exit(1);
+      }
+      break;
+
+  case 'o':
+      periodicity = ONCE_ONLY;
+      break;
+
+  case 'x':
+      if (strcmp(optarg, "-") == 0)
+      {
+  debug_file = stderr;
+      }
+      else
+      {
+  debug_file = fopen(optarg, "a+");
+      }
+      break;
+
+  case 'V':
+      fprintf(stderr, VERSION_MSG);
+      exit(0);
+
+  case 'h':
+  case '?':
+      fprintf(stderr, USAGE_MSG, argv[0]);
+      exit(1);
+  }
     }
 
     if ((argc - optind) != 1)
     {
-	fprintf(stderr, USAGE_MSG, argv[0]);
-	exit(1);
+  fprintf(stderr, USAGE_MSG, argv[0]);
+  exit(1);
     }
 
     DEBUG((VERSION_MSG "\n"));
 
     if (start_time)
     {
-	time_now = parse_time(start_time, use_american_date_formats);
-	if (time_now == -1)
-	{
-	    fprintf(stderr, "%s: invalid start time (%s)\n", argv[0], start_time);
-	    exit(1);
-	}
-	time_offset = time_now - time(NULL);
-	DEBUG(("Using offset of %d seconds from real time\n", time_offset));
+  time_now = parse_time(start_time, use_american_date_formats);
+  if (time_now == -1)
+  {
+      fprintf(stderr, "%s: invalid start time (%s)\n", argv[0], start_time);
+      exit(1);
+  }
+  time_offset = time_now - time(NULL);
+  DEBUG(("Using offset of %d seconds from real time\n", time_offset));
     }
 
     /* The template should be the only argument.
      * Unless the -o option was specified, determine the periodicity.
      */
-    
+
     template = argv[optind];
     if (periodicity == UNKNOWN)
     {
-	periodicity = determine_periodicity(template);
+  periodicity = determine_periodicity(template);
     }
 
 
     DEBUG(("periodicity = %d %s\n", period_multiple, periods[periodicity]));
 
     if (period_delay) {
-	if (   (period_delay_units > periodicity)
-	    || (   period_delay_units == periodicity
-		&& abs(period_delay)  >= period_multiple)) {
-	    fprintf(stderr, "%s: period delay cannot be larger than the rollover period\n", argv[0], start_time);
-	    exit(1);
-	}		
-	period_delay *= period_seconds[period_delay_units];
+  if (   (period_delay_units > periodicity)
+      || (   period_delay_units == periodicity
+  && abs(period_delay)  >= period_multiple)) {
+      fprintf(stderr, "%s: period delay cannot be larger than the rollover period\n", argv[0], start_time);
+      exit(1);
+  }
+  period_delay *= period_seconds[period_delay_units];
     }
 
     DEBUG(("Rotation period is per %d %s\n", period_multiple, periods[periodicity]));
@@ -310,55 +350,88 @@ main(int argc, char **argv)
 
     for (;;)
     {
-	/* Read a buffer's worth of log file data, exiting on errors
-	 * or end of file.
-	 */
-	n_bytes_read = read(0, read_buf, sizeof read_buf);
-	if (n_bytes_read == 0)
-	{
-	    exit(3);
-	}
-	if (errno == EINTR)
-	{
-	    continue;
-	}
-	else if (n_bytes_read < 0)
-	{
-	    exit(4);
-	}
+  /* Read a buffer's worth of log file data, exiting on errors
+   * or end of file.
+   */
+  n_bytes_read = read(0, read_buf, sizeof read_buf);
+  if (n_bytes_read == 0)
+  {
+      exit(3);
+  }
+  if (errno == EINTR)
+  {
+      continue;
+  }
+  else if (n_bytes_read < 0)
+  {
+      exit(4);
+  }
 
-	time_now = time(NULL) + time_offset;
-	
-	/* If the current period has finished and there is a log file
-	 * open, close the log file
-	 */
-	if ((time_now >= next_period) && (log_fd >= 0))
-	{
-	    close(log_fd);
-	    log_fd = -1;
-	}
-	
-	/* If there is no log file open then open a new one.
-	 */
-	if (log_fd < 0)
-	{
-	    log_fd = new_log_file(template, linkname, linktype, prevlinkname,
-				  periodicity, period_multiple, period_delay,
-				  filename, sizeof (filename), time_now, &next_period);
-	}
+  time_now = time(NULL) + time_offset;
 
-	DEBUG(("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n",
-	       timestamp(time_now), time_now, 
-	       timestamp(next_period), next_period,
-	       next_period - time_now));
+  /* If the current period has finished and there is a log file
+   * open, close the log file
+   */
+  if ((time_now >= next_period) && (log_fd >= 0))
+  {
+      if(onrotateexec[0]!=0)
+      {
+  if(fstat(log_fd, &fstat_onrotate) == 0)
+  {
+      if(fstat_onrotate.st_nlink>0)
+      {
+  snprintf(onrotateprocfile, MAX_PATH, onrotatept, log_fd);
+  if(readlink(onrotateprocfile, onrotatefile, MAX_PATH))
+  {
+      DEBUG(("readlink(log_file)=%s\n", onrotatefile));
 
-	/* Write out the log data to the current log file.
-	 */
-	if (write(log_fd, read_buf, n_bytes_read) != n_bytes_read)
-	{
-	    perror(filename);
-	    exit(5);
-	}
+      signal(SIGCHLD, SIG_IGN);
+      if(!fork())
+      {
+  execl(onrotateexec, onrotateexec, onrotatefile, (char*)0 );
+      }
+  }
+      }
+  }
+      }
+
+      close(log_fd);
+      log_fd = -1;
+  }
+
+  /* If there is no log file open then open a new one.
+   */
+  if (log_fd < 0)
+  {
+      log_fd = new_log_file(template, linkname, linktype, prevlinkname,
+    periodicity, period_multiple, period_delay,
+    filename, sizeof (filename), time_now, &next_period);
+  }
+
+  DEBUG(("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n",
+         timestamp(time_now), time_now,
+         timestamp(next_period), next_period,
+         next_period - time_now));
+
+  /* Write out the log data to the current log file.
+   */
+  if (write(log_fd, read_buf, n_bytes_read) != n_bytes_read)
+  {
+      perror(filename);
+      exit(5);
+  }
+
+  /* syslog */
+    if(sock >= 0)
+  {
+    	if(sendto(sock, read_buf, n_bytes_read, 0,
+                     (struct sockaddr *) &syslogsrv,
+                     sizeof(syslogsrv)
+        		) == -1)
+        	fprintf(stderr,"Error sendto()\n");
+  }
+
+
     }
 
     /* NOTREACHED */

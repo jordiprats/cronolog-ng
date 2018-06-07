@@ -4,6 +4,15 @@
 
 ### 0.2.0
 
+* added syslog support (UDP only):
+```
+-R NAME,   --remote-syslog=NAME syslog server
+```
+* added support for executing scripts on rotation
+```
+-F NAME,   --on-rotate=FILE     file to execute on log rotation
+```
+
 ## cronolog changelog
 
 1999-12-20 Andrew Ford  <andrew@icarus.demon.co.uk>
@@ -11,12 +20,12 @@
 	* New version 1.6.1
 	* New (Apache) license terms applied and code submitted to Apache
 	  Software Foundation
-	
+
 1999-12-16  Andrew Ford  <andrew@icarus.demon.co.uk>
 
 	* New version 1.6
 	* patch from Charles Thayer <thayer@mediabridge.com> to fix
-	  a bug whereby if cronolog is started shortly before the end of a 
+	  a bug whereby if cronolog is started shortly before the end of a
 	  period it will not rotate until the end of the next period.
 
 Thu Jun  4 15:48:01 1998  Andrew Ford  <andrew@icarus.demon.co.uk>
@@ -25,11 +34,11 @@ Thu Jun  4 15:48:01 1998  Andrew Ford  <andrew@icarus.demon.co.uk>
 	* src/cronolog.c: removed spurious semicolon from if statement
 	* src/cronotest.c: ditto
 	* TODO: remove mention of symbolic link
-	
+
 Sun Mar  8 11:01:33 1998  Andrew Ford  <andrew@icarus.demon.co.uk>
 
 	* Updated README file and documentation (changed URLs to point to
-  	  www.ford-mason.uk as archive site) 
+  	  www.ford-mason.uk as archive site)
 	* src/config.h: new file (split out of src/cronoutils.h)
 	* src/cronolog.c: rearranged main loop so that a new log file is
 	  not created until a message has been read, to avoid creating
@@ -53,4 +62,3 @@ Mon Dec 16 09:30:04 1996  Andrew Ford  <andrew@icarus.demon.co.uk>
 Sun Dec 15 12:30:03 1996  Andrew Ford  <andrew@icarus.demon.co.uk>
 
 	* First version (1.2) ready for release.
-
