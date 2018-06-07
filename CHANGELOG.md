@@ -10,7 +10,7 @@
 ```
 * added support for executing scripts on rotation
 ```
--F NAME,   --on-rotate=FILE     file to execute on log rotation
+-F NAME,   --on-rotation=FILE     file to execute on log rotation
 ```
 
 ## cronolog changelog
