@@ -1,3 +1,5 @@
+# TODO
+
 * Rewrite cronolog as an Apache module as well as a standalone program.
 
 * Option to run an extenal program (such as wwwstat or gzip) on each
