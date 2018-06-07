@@ -1,4 +1,5 @@
 # cronolog-ng
+forked from [fordmason/cronolog](https://github.com/fordmason/cronolog)
 
 "cronolog" is a simple program that reads log messages from its input
 and writes them to a set of output files, the names of which are
